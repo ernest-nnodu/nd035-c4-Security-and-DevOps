@@ -52,9 +52,4 @@ public class SecurityConfiguration {
 
         return authenticationManagerBuilder.build();
     }
-
-    @Bean
-    public BCryptPasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
 }
