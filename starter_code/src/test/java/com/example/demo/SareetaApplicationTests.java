@@ -69,16 +69,27 @@ public class SareetaApplicationTests {
 		Assertions.assertEquals(mockUser.getUsername(), returnedUser.getUsername());
 	}
 
-	/*@Test
+	@Test
+	@DisplayName("Create user with short password is rejected")
 	public void createUser_withShortPassword_returnsBadRequest() throws Exception {
 		CreateUserRequest userRequest = createUserRequest("user", "pass", "pass");
 
 		mockMvc.perform(post("/api/user/create")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(json.writeValueAsString(userRequest)))
-				.andExpect(status().is5xxServerError());
-	}*/
+				.andExpect(status().isBadRequest());
+	}
 
+	@Test
+	@DisplayName("Create user with mismatch between passwords is rejected")
+	public void createUser_withPasswordsMismatch_returnsBadRequest() throws Exception {
+		CreateUserRequest userRequest = createUserRequest("user", "pass", "word");
+
+		mockMvc.perform(post("/api/user/create")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(userRequest)))
+				.andExpect(status().isBadRequest());
+	}
 
 
 	private User createUser(long id, String username, String password) {
