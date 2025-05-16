@@ -5,23 +5,30 @@ import com.example.demo.model.persistence.User;
 import com.example.demo.model.persistence.repositories.CartRepository;
 import com.example.demo.model.persistence.repositories.UserRepository;
 import com.example.demo.model.requests.CreateUserRequest;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.example.demo.security.JWTUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Assertions;
+import static org.junit.jupiter.api.Assertions.*;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.Optional;
+
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -43,19 +50,28 @@ public class SareetaApplicationTests {
 	@Autowired
 	private ObjectMapper json;
 
+	private User mockUser;
+
+	private String jwtToken;
+
 	@Test
 	public void contextLoads() {
+	}
+
+	@BeforeEach
+	void setup() {
+		mockUser = createUser(1L, "user", "password");
+
+		when(passwordEncoder.encode(anyString())).thenReturn("password");
+		when(cartRepository.save(any())).thenReturn(new Cart());
+		when(userRepository.save(any(User.class))).thenReturn(mockUser);
+		when(userRepository.findByUsername("user")).thenReturn(mockUser);
 	}
 
 	@Test
 	@DisplayName("Create user with valid credentials is successful")
 	public void createUser_withValidCredentials_returnsUserAndStatusOK() throws Exception {
-		User mockUser = createUser(1L, "user", "password");
 		CreateUserRequest userRequest = createUserRequest("user", "password", "password");
-
-		when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
-		when(cartRepository.save(any())).thenReturn(new Cart());
-		when(userRepository.save(any(User.class))).thenReturn(mockUser);
 
 		MvcResult result = mockMvc.perform(post("/api/user/create")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -66,7 +82,7 @@ public class SareetaApplicationTests {
 		String responseBody = result.getResponse().getContentAsString();
 		User returnedUser = json.readValue(responseBody, User.class);
 
-		Assertions.assertEquals(mockUser.getUsername(), returnedUser.getUsername());
+		assertEquals(mockUser.getUsername(), returnedUser.getUsername());
 	}
 
 	@Test
@@ -89,6 +105,42 @@ public class SareetaApplicationTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json.writeValueAsString(userRequest)))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("Authenticated user can retrieve a user by id")
+	public void findUserById_withAuthenticatedUserAndValidId_returnsUser() throws Exception {
+		User mockUser = createUser(1L, "user", "password");
+
+		when(userRepository.findById(anyLong())).thenReturn(Optional.of(mockUser));
+		jwtToken = JWTUtils.generateToken("user");
+
+		MvcResult result = mockMvc.perform(get("/api/user/id/1")
+				.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String responseBody = result.getResponse().getContentAsString();
+		User returnedUser = json.readValue(responseBody, User.class);
+
+		assertAll(
+				() -> assertNotNull(returnedUser),
+				() -> assertEquals(mockUser.getId(), returnedUser.getId())
+		);
+	}
+
+	@Test
+	@DisplayName("Unauthenticated user cannot retrieve a user by id")
+	public void findUserById_withUnauthenticatedUserAndValidId_isForbidden() throws Exception {
+		User mockUser = createUser(1L, "user", "password");
+
+		when(userRepository.findById(anyLong())).thenReturn(Optional.of(mockUser));
+		jwtToken = JWTUtils.generateToken("user");
+
+		mockMvc.perform(get("/api/user/id/1")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isForbidden());
 	}
 
 
