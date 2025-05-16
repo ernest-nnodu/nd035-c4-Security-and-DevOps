@@ -9,12 +9,9 @@ import com.example.demo.security.JWTUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.junit.jupiter.api.Test;
@@ -114,7 +111,6 @@ public class SareetaApplicationTests {
 		User mockUser = createUser(1L, "user", "password");
 
 		when(userRepository.findById(anyLong())).thenReturn(Optional.of(mockUser));
-		jwtToken = JWTUtils.generateToken("user");
 
 		MvcResult result = mockMvc.perform(get("/api/user/id/1")
 				.contentType(MediaType.APPLICATION_JSON))
@@ -143,6 +139,39 @@ public class SareetaApplicationTests {
 				.andExpect(status().isForbidden());
 	}
 
+	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("Authenticated user can retrieve a user by username")
+	public void findUserByUsername_withAuthenticatedUserAndUsername_returnsUser() throws Exception {
+		User mockUser = createUser(1L, "user", "password");
+
+		when(userRepository.findByUsername(anyString())).thenReturn(mockUser);
+
+		MvcResult result = mockMvc.perform(get("/api/user/user")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String responseBody = result.getResponse().getContentAsString();
+		User returnedUser = json.readValue(responseBody, User.class);
+
+		assertAll(
+				() -> assertNotNull(returnedUser),
+				() -> assertEquals(mockUser.getUsername(), returnedUser.getUsername())
+		);
+	}
+
+	@Test
+	@DisplayName("Unauthenticated user cannot retrieve a user by username")
+	public void findUserByUsername_withUnAuthenticatedUserAndUsername_isForbidden() throws Exception {
+		User mockUser = createUser(1L, "user", "password");
+
+		when(userRepository.findByUsername(anyString())).thenReturn(mockUser);
+
+		mockMvc.perform(get("/api/user/user")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isForbidden());
+	}
 
 	private User createUser(long id, String username, String password) {
 		User user = new User();
