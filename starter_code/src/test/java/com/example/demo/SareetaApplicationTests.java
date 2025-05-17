@@ -8,6 +8,7 @@ import com.example.demo.model.persistence.repositories.ItemRepository;
 import com.example.demo.model.persistence.repositories.UserRepository;
 import com.example.demo.model.requests.CreateUserRequest;
 import com.example.demo.model.requests.ModifyCartRequest;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -211,6 +213,27 @@ public class SareetaApplicationTests {
 				() -> assertEquals(mockItem.getId(), returnedCart.getItems().getFirst().getId()));
 	}
 
+	/*@Test
+	@WithMockUser
+	@DisplayName("Get items returns list of items")
+	public void getItems_returnsItems() throws Exception {
+		when(itemRepository.findAll()).thenReturn(List.of(mockItem));
+
+		MvcResult result = mockMvc.perform(get("/api/item")
+				.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String response = result.getResponse().getContentAsString();
+		List<Item> returnedItems = json.readValue(response, new TypeReference<List<Item>>() {});
+
+		assertAll(
+				() -> assertNotNull(returnedItems),
+				() -> assertFalse(returnedItems.isEmpty()),
+				() -> assertEquals(mockItem.getId(), returnedItems.getFirst().getId())
+		);
+	}*/
+
 	@Test
 	@DisplayName("Unauthenticated user cannot add item to cart")
 	public void addToCart_unauthenticatedUserAddItemToCart_isForbidden() throws Exception {
@@ -239,6 +262,57 @@ public class SareetaApplicationTests {
 		mockMvc.perform(post("/api/cart/addToCart")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(json.writeValueAsString(createCartRequest(user, item, 1))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("Authenticated user can remove item from cart")
+	public void removeFromCart_authenticatedUserRemoveItemFromCart_returnsEmptyCart() throws Exception {
+		ModifyCartRequest request = createCartRequest(mockUser, mockItem, 1);
+		Cart emptyCart = new Cart();
+		emptyCart.setUser(mockUser);
+		emptyCart.setItems(new ArrayList<>());
+
+		when(cartRepository.save(any())).thenReturn(emptyCart);
+
+		MvcResult result = mockMvc.perform(post("/api/cart/removeFromCart")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(request)))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String response = result.getResponse().getContentAsString();
+		Cart returnedCart = json.readValue(response, Cart.class);
+
+		assertAll(
+				() -> assertNotNull(returnedCart),
+				() -> assertEquals(mockUser.getId(), returnedCart.getUser().getId()),
+				() -> assertTrue(returnedCart.getItems().isEmpty()));
+	}
+
+	@Test
+	@DisplayName("Remove from cart fails when user not authenticated")
+	public void removeFromCart_unauthenticatedUserRemoveItemFromCart_isForbidden() throws Exception {
+		ModifyCartRequest request = createCartRequest(mockUser, mockItem, 1);
+
+		mockMvc.perform(post("/api/cart/removeFromCart")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(request)))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@WithMockUser
+	@DisplayName("Remove from cart fails when item not found")
+	public void removeFromCart_invalidItemId_returnsNotFound() throws Exception {
+		Item item = new Item();
+		item.setId(10L);
+		ModifyCartRequest request = createCartRequest(mockUser, item, 1);
+
+		mockMvc.perform(post("/api/cart/removeFromCart")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(request)))
 				.andExpect(status().isNotFound());
 	}
 
