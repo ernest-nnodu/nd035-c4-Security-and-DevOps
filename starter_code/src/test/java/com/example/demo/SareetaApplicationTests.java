@@ -379,13 +379,17 @@ public class SareetaApplicationTests {
 				.andExpect(status().isNotFound());
 	}
 
-	/*@Test
+	@Test
 	@WithMockUser
-	@DisplayName("")
+	@DisplayName("Get orders for user with valid username")
 	public void getOrderForUser_validUsername_returnsOrder() throws Exception {
-		MvcResult result = mockMvc.perform(get("/api/order/history/username")
+		mockOrder = UserOrder.createFromCart(mockCart);
+		mockUser.setCart(mockCart);
+		when(orderRepository.findByUser(mockUser)).thenReturn(List.of(mockOrder));
+
+		MvcResult result = mockMvc.perform(get("/api/order/history/user")
 				.contentType(MediaType.APPLICATION_JSON))
-				.andExpect(status().isNotFound())
+				.andExpect(status().isOk())
 				.andReturn();
 
 		String response = result.getResponse().getContentAsString();
@@ -396,7 +400,16 @@ public class SareetaApplicationTests {
 				() -> assertFalse(userOrders.isEmpty()),
 				() -> assertEquals(mockUser.getId(), userOrders.getFirst().getUser().getId()),
 				() -> assertEquals(mockItem.getId(), userOrders.getFirst().getItems().getFirst().getId()));
-	}*/
+	}
+
+	@Test
+	@WithMockUser
+	@DisplayName("")
+	public void getOrderForUser_invalidUsername_returnsUserNotFound() throws Exception {
+		mockMvc.perform(get("/api/order/history/testuser")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isNotFound());
+	}
 
 	private User createUser(long id, String username, String password) {
 		User user = new User();
