@@ -36,8 +36,7 @@ public class OrderController {
 			return ResponseEntity.notFound().build();
 		}
 		UserOrder order = UserOrder.createFromCart(user.getCart());
-		orderRepository.save(order);
-		return ResponseEntity.ok(order);
+		return ResponseEntity.ok(orderRepository.save(order));
 	}
 	
 	@GetMapping("/history/{username}")

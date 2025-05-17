@@ -3,8 +3,10 @@ package com.example.demo;
 import com.example.demo.model.persistence.Cart;
 import com.example.demo.model.persistence.Item;
 import com.example.demo.model.persistence.User;
+import com.example.demo.model.persistence.UserOrder;
 import com.example.demo.model.persistence.repositories.CartRepository;
 import com.example.demo.model.persistence.repositories.ItemRepository;
+import com.example.demo.model.persistence.repositories.OrderRepository;
 import com.example.demo.model.persistence.repositories.UserRepository;
 import com.example.demo.model.requests.CreateUserRequest;
 import com.example.demo.model.requests.ModifyCartRequest;
@@ -51,6 +53,9 @@ public class SareetaApplicationTests {
 	private ItemRepository itemRepository;
 
 	@MockBean
+	private OrderRepository orderRepository;
+
+	@MockBean
 	private BCryptPasswordEncoder passwordEncoder;
 
 	@Autowired
@@ -61,6 +66,8 @@ public class SareetaApplicationTests {
 	private Item mockItem;
 
 	private Cart mockCart;
+
+	private UserOrder mockOrder;
 
 	@Test
 	public void contextLoads() {
@@ -230,13 +237,12 @@ public class SareetaApplicationTests {
 		assertAll(
 				() -> assertNotNull(returnedItems),
 				() -> assertFalse(returnedItems.isEmpty()),
-				() -> assertEquals(mockItem.getId(), returnedItems.getFirst().getId())
-		);
+				() -> assertEquals(mockItem.getId(), returnedItems.getFirst().getId()));
 	}
 
 	@Test
 	@WithMockUser
-	@DisplayName("")
+	@DisplayName("Get item by id")
 	public void getItemById() throws Exception {
 		MvcResult result = mockMvc.perform(get("/api/item/1")
 				.contentType(MediaType.APPLICATION_JSON))
@@ -248,8 +254,7 @@ public class SareetaApplicationTests {
 
 		assertAll(
 				() -> assertNotNull(returnedItem),
-				() -> assertEquals(mockItem.getId(), returnedItem.getId())
-		);
+				() -> assertEquals(mockItem.getId(), returnedItem.getId()));
 	}
 
 	@Test
@@ -269,7 +274,7 @@ public class SareetaApplicationTests {
 
 	@Test
 	@WithMockUser
-	@DisplayName("Item with invalid id not found")
+	@DisplayName("Add to cart fails due to item not found")
 	public void addToCart_invalidItemId_returnsNotFound() throws Exception {
 		User user = new User();
 		user.setUsername("testUser");
@@ -333,6 +338,65 @@ public class SareetaApplicationTests {
 						.content(json.writeValueAsString(request)))
 				.andExpect(status().isNotFound());
 	}
+
+	@Test
+	@WithMockUser
+	@DisplayName("Authenticated user can submit order")
+	public void submitOrder_authenticatedUser_returnOrder() throws Exception {
+		mockOrder = UserOrder.createFromCart(mockCart);
+		mockUser.setCart(mockCart);
+		when(orderRepository.save(any())).thenReturn(mockOrder);
+
+		MvcResult result = mockMvc.perform(post("/api/order/submit/user")
+				.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String response = result.getResponse().getContentAsString();
+		UserOrder order = json.readValue(response, UserOrder.class);
+
+		assertAll(
+				() -> assertNotNull(order),
+				() -> assertFalse(order.getItems().isEmpty()),
+				() -> assertEquals(mockUser.getId(), order.getUser().getId())
+		);
+	}
+
+	@Test
+	@DisplayName("Unauthenticated user cannot submit order")
+	public void submitOrder_unauthenticatedUser_isForbidden() throws Exception {
+		mockMvc.perform(post("/api/order/submit/testuser")
+				.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@WithMockUser
+	@DisplayName("Submit order fails due to user not found")
+	public void submitOrder_invalidUsername_returnsUserNotFound() throws Exception {
+		mockMvc.perform(post("/api/order/submit/testuser")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isNotFound());
+	}
+
+	/*@Test
+	@WithMockUser
+	@DisplayName("")
+	public void getOrderForUser_validUsername_returnsOrder() throws Exception {
+		MvcResult result = mockMvc.perform(get("/api/order/history/username")
+				.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isNotFound())
+				.andReturn();
+
+		String response = result.getResponse().getContentAsString();
+		List<UserOrder> userOrders = json.readValue(response, new TypeReference<List<UserOrder>>() {});
+
+		assertAll(
+				() -> assertNotNull(userOrders),
+				() -> assertFalse(userOrders.isEmpty()),
+				() -> assertEquals(mockUser.getId(), userOrders.getFirst().getUser().getId()),
+				() -> assertEquals(mockItem.getId(), userOrders.getFirst().getItems().getFirst().getId()));
+	}*/
 
 	private User createUser(long id, String username, String password) {
 		User user = new User();
