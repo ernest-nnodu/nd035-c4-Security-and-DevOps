@@ -1,11 +1,13 @@
 package com.example.demo;
 
 import com.example.demo.model.persistence.Cart;
+import com.example.demo.model.persistence.Item;
 import com.example.demo.model.persistence.User;
 import com.example.demo.model.persistence.repositories.CartRepository;
+import com.example.demo.model.persistence.repositories.ItemRepository;
 import com.example.demo.model.persistence.repositories.UserRepository;
 import com.example.demo.model.requests.CreateUserRequest;
-import com.example.demo.security.JWTUtils;
+import com.example.demo.model.requests.ModifyCartRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,6 +24,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
@@ -42,6 +46,9 @@ public class SareetaApplicationTests {
 	private CartRepository cartRepository;
 
 	@MockBean
+	private ItemRepository itemRepository;
+
+	@MockBean
 	private BCryptPasswordEncoder passwordEncoder;
 
 	@Autowired
@@ -49,7 +56,9 @@ public class SareetaApplicationTests {
 
 	private User mockUser;
 
-	private String jwtToken;
+	private Item mockItem;
+
+	private Cart mockCart;
 
 	@Test
 	public void contextLoads() {
@@ -58,10 +67,16 @@ public class SareetaApplicationTests {
 	@BeforeEach
 	void setup() {
 		mockUser = createUser(1L, "user", "password");
+		mockItem = createItem();
+		mockCart = createCart();
 
 		when(passwordEncoder.encode(anyString())).thenReturn("password");
-		when(cartRepository.save(any())).thenReturn(new Cart());
+
+		when(cartRepository.save(any())).thenReturn(mockCart);
+		when(itemRepository.findById(mockItem.getId())).thenReturn(Optional.ofNullable(mockItem));
+
 		when(userRepository.save(any(User.class))).thenReturn(mockUser);
+		when(userRepository.findById(1L)).thenReturn(Optional.ofNullable(mockUser));
 		when(userRepository.findByUsername("user")).thenReturn(mockUser);
 	}
 
@@ -108,9 +123,6 @@ public class SareetaApplicationTests {
 	@WithMockUser(username = "user")
 	@DisplayName("Authenticated user can retrieve a user by id")
 	public void findUserById_withAuthenticatedUserAndValidId_returnsUser() throws Exception {
-		User mockUser = createUser(1L, "user", "password");
-
-		when(userRepository.findById(anyLong())).thenReturn(Optional.of(mockUser));
 
 		MvcResult result = mockMvc.perform(get("/api/user/id/1")
 				.contentType(MediaType.APPLICATION_JSON))
@@ -127,12 +139,18 @@ public class SareetaApplicationTests {
 	}
 
 	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("User not found with invalid id")
+	public void findUserById_withAuthenticatedUserAndInvalidId_isNotFound() throws Exception {
+
+		mockMvc.perform(get("/api/user/id/100")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	@DisplayName("Unauthenticated user cannot retrieve a user by id")
 	public void findUserById_withUnauthenticatedUserAndValidId_isForbidden() throws Exception {
-		User mockUser = createUser(1L, "user", "password");
-
-		when(userRepository.findById(anyLong())).thenReturn(Optional.of(mockUser));
-		jwtToken = JWTUtils.generateToken("user");
 
 		mockMvc.perform(get("/api/user/id/1")
 						.contentType(MediaType.APPLICATION_JSON))
@@ -143,10 +161,6 @@ public class SareetaApplicationTests {
 	@WithMockUser(username = "user")
 	@DisplayName("Authenticated user can retrieve a user by username")
 	public void findUserByUsername_withAuthenticatedUserAndUsername_returnsUser() throws Exception {
-		User mockUser = createUser(1L, "user", "password");
-
-		when(userRepository.findByUsername(anyString())).thenReturn(mockUser);
-
 		MvcResult result = mockMvc.perform(get("/api/user/user")
 						.contentType(MediaType.APPLICATION_JSON))
 				.andExpect(status().isOk())
@@ -162,15 +176,70 @@ public class SareetaApplicationTests {
 	}
 
 	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("User not found with invalid username")
+	public void findUserByUsername_withAuthenticatedUserAndInvalidUsername_isNotFound() throws Exception {
+		mockMvc.perform(get("/api/user/username")
+						.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	@DisplayName("Unauthenticated user cannot retrieve a user by username")
 	public void findUserByUsername_withUnAuthenticatedUserAndUsername_isForbidden() throws Exception {
-		User mockUser = createUser(1L, "user", "password");
-
-		when(userRepository.findByUsername(anyString())).thenReturn(mockUser);
-
 		mockMvc.perform(get("/api/user/user")
 						.contentType(MediaType.APPLICATION_JSON))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@WithMockUser(username = "user")
+	@DisplayName("Authenticated user can add item to cart")
+	public void addToCart_authenticatedUserAddItemToCart_returnsCartWithItem() throws Exception {
+		MvcResult result = mockMvc.perform(post("/api/cart/addToCart")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json.writeValueAsString(createCartRequest(mockUser, mockItem, 1))))
+				.andExpect(status().isOk())
+				.andReturn();
+
+		String response = result.getResponse().getContentAsString();
+		Cart returnedCart = json.readValue(response, Cart.class);
+
+		assertAll(
+				() -> assertNotNull(returnedCart),
+				() -> assertEquals(mockUser.getId(), returnedCart.getUser().getId()),
+				() -> assertEquals(mockItem.getId(), returnedCart.getItems().getFirst().getId()));
+	}
+
+	@Test
+	@DisplayName("Unauthenticated user cannot add item to cart")
+	public void addToCart_unauthenticatedUserAddItemToCart_isForbidden() throws Exception {
+		User user = new User();
+		user.setUsername("testUser");
+
+		Item item = new Item();
+		item.setId(1L);
+
+		mockMvc.perform(post("/api/cart/addToCart")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(createCartRequest(user, item, 1))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@WithMockUser
+	@DisplayName("Item with invalid id not found")
+	public void addToCart_invalidItemId_returnsNotFound() throws Exception {
+		User user = new User();
+		user.setUsername("testUser");
+
+		Item item = new Item();
+		item.setId(10L);
+
+		mockMvc.perform(post("/api/cart/addToCart")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json.writeValueAsString(createCartRequest(user, item, 1))))
+				.andExpect(status().isNotFound());
 	}
 
 	private User createUser(long id, String username, String password) {
@@ -178,6 +247,7 @@ public class SareetaApplicationTests {
 		user.setId(id);
 		user.setUsername(username);
 		user.setPassword(password);
+		user.setCart(new Cart());
 
 		return user;
 	}
@@ -189,6 +259,36 @@ public class SareetaApplicationTests {
 		userRequest.setConfirmPassword(confirmPassword);
 
 		return userRequest;
+	}
+
+	private Item createItem() {
+		Item item = new Item();
+
+		item.setId(1L);
+		item.setName("Round widget");
+		item.setPrice(new BigDecimal("2.99"));
+		item.setDescription("Widget that is round");
+
+		return item;
+	}
+
+	private ModifyCartRequest createCartRequest(User user, Item item, int quantity) {
+		ModifyCartRequest request = new ModifyCartRequest();
+		request.setUsername(user.getUsername());
+		request.setItemId(item.getId());
+		request.setQuantity(quantity);
+
+		return request;
+	}
+
+	private Cart createCart() {
+		Cart cart = new Cart();
+
+		cart.setId(1L);
+		cart.setUser(mockUser);
+		cart.setItems(List.of(mockItem));
+
+		return cart;
 	}
 
 }
